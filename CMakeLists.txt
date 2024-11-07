@@ -7,8 +7,11 @@ project(odometry_from_twist)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   
-  nav_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  
   geometry_msgs
+  nav_msgs
 )
 
 find_package(Eigen3 REQUIRED)

@@ -5,11 +5,14 @@
 
 #include <ros/ros.h>
 
+#include <tf2_eigen/tf2_eigen.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_broadcaster.h>
 
 #include <geometry_msgs/TwistWithCovarianceStamped.h>
 #include <nav_msgs/Odometry.h>
+
+using Covariance6d = Eigen::Matrix<double, 6, 6>;
 
 struct OdometryFromTwist {
   OdometryFromTwist() {
@@ -54,33 +57,43 @@ struct OdometryFromTwist {
 protected:
   void accumulate(const geometry_msgs::TwistWithCovariance &twist, double dt) {
 
-    const auto &linear = twist.twist.linear;
-    const auto &angular = twist.twist.angular;
+    // Structured (un)binding extracts all components
+    const auto &[vx, vy, vz] = twist.twist.linear;
+    const auto &[ox, oy, oz] = twist.twist.linear;
 
-    Eigen::Matrix<double, 6, 1> velocities;
-    velocities << linear.x, linear.y, linear.z, angular.x, angular.y, angular.z;
+    Eigen::Vector3d linear{vx, vy, vz};
+    Eigen::Vector3d angular{ox, oy, oz};
 
-    Eigen::Matrix<double, 6, 1> delta = dt * velocities;
+    // Rotate Linear Velocity into local robot frame
+    Eigen::Vector3d linear_local = pose_.rotation() * linear;
+    // And add a small step into this direction onto
+    //  the current pose's selection
+    pose_.translation() += dt * linear_local;
 
-    // TODO:
+    // Add a small step of rotation onth the current pose's rotation
+    Eigen::Quaterniond angular_quat{
+        Eigen::AngleAxisd(dt * angular.x(), Eigen::Vector3d::UnitX()) *
+        Eigen::AngleAxisd(dt * angular.y(), Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(dt * angular.z(), Eigen::Vector3d::UnitZ())};
+    // TODO: figure out if this does what it should :)
+    // pose_ = pose_.rotation() * angular_quat * pose_.translation();
+
+    // It should implement this, but in 3d :)
     // // derive new position based on current velocities and old position
     // pose.x += (pose.vx * cos(pose.theta) - pose.vy * sin(pose.theta)) * dt;
     // pose.y += (pose.vx * sin(pose.theta) + pose.vy * cos(pose.theta)) * dt;
     // pose.theta += pose.omega * dt;
+
+    // TODO: Update Covariance Matrix
+    // ...
   }
 
   geometry_msgs::TransformStamped createTransform(const std_msgs::Header &hdr) {
-    geometry_msgs::TransformStamped tf;
+    geometry_msgs::TransformStamped tf = tf2::eigenToTransform(pose_);
 
     tf.header = hdr;
     tf.header.frame_id = odom_frame_;
     tf.child_frame_id = base_frame_;
-
-    // TODO:
-    // tf.transform.translation.x = pose.x;
-    // tf.transform.translation.y = pose.y;
-    // tf.transform.translation.z = 0.0;
-    // tf.transform.rotation = createQuaternionMsgFromYaw(pose.theta);
 
     return tf;
   }

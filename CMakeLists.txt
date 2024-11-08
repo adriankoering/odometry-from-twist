@@ -30,8 +30,8 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-add_executable(odometry_from_twist_node src/odometry_from_twist.cpp)
-target_link_libraries(odometry_from_twist_node
+add_executable(odometry_node src/odometry_from_twist.cpp)
+target_link_libraries(odometry_node
   ${catkin_LIBRARIES}
   Eigen3::Eigen
 )

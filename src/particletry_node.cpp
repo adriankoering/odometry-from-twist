@@ -42,13 +42,12 @@ struct OdometryFromTwist {
 
     // Calculate the time delta for which the current velocities are applicable
     double dt = (hdr.stamp - last_time_).toSec();
-
     // Integrate position through velocities obtained from twist_msg
     accumulate(twist_msg->twist, dt);
 
     if (publish_odom_tf_)
       odom_broadcaster_.sendTransform(createTransform(hdr));
-    odom_pub_.publish(createOdometry(hdr));
+    odom_pub_.publish(createOdometry(*twist_msg));
 
     // update time.stamp for next iteration
     last_time_ = hdr.stamp;
@@ -64,19 +63,26 @@ protected:
     Eigen::Vector3d linear{vx, vy, vz};
     Eigen::Vector3d angular{ox, oy, oz};
 
-    // Rotate Linear Velocity into local robot frame
-    Eigen::Vector3d linear_local = pose_.rotation() * linear;
-    // And add a small step into this direction onto
-    //  the current pose's selection
-    pose_.translation() += dt * linear_local;
+    auto delta = odometry::step(linear, angular, dt);
 
-    // Add a small step of rotation onth the current pose's rotation
-    Eigen::Quaterniond angular_quat{
-        Eigen::AngleAxisd(dt * angular.x(), Eigen::Vector3d::UnitX()) *
-        Eigen::AngleAxisd(dt * angular.y(), Eigen::Vector3d::UnitY()) *
-        Eigen::AngleAxisd(dt * angular.z(), Eigen::Vector3d::UnitZ())};
-    // TODO: figure out if this does what it should :)
-    // pose_ = pose_.rotation() * angular_quat * pose_.translation();
+    // // Rotate Linear Velocity into local robot frame
+    // Eigen::Vector3d linear_local = pose_.rotation() * linear;
+    // // And add a small step into this direction onto
+    // //  the current pose's selection
+    // pose_.translation() += dt * linear_local;
+
+    // // Add a small step of rotation onto the current pose's rotation
+    // Eigen::Quaterniond angular_quat{
+    //     Eigen::AngleAxisd(dt * angular.x(), Eigen::Vector3d::UnitX()) *
+    //     Eigen::AngleAxisd(dt * angular.y(), Eigen::Vector3d::UnitY()) *
+    //     Eigen::AngleAxisd(dt * angular.z(), Eigen::Vector3d::UnitZ())};
+    // // TODO: figure out if this does what it should :)
+
+    // Eigen::Isometry3d delta =
+    //     Eigen::Translation3d(dt * linear_local) * angular_quat;
+
+    pose_ = delta * pose_;
+    // pose_.rotation() += pose_.rotation() * angular_quat;
 
     // It should implement this, but in 3d :)
     // // derive new position based on current velocities and old position
@@ -98,35 +104,17 @@ protected:
     return tf;
   }
 
-  nav_msgs::Odometry createOdometry(const std_msgs::Header &hdr) {
+  nav_msgs::Odometry
+  createOdometry(const geometry_msgs::TwistWithCovarianceStamped &twist) {
+
     nav_msgs::Odometry odom;
-    odom.header = hdr;
+    odom.header = twist.header;
     odom.header.frame_id = odom_frame_;
     odom.child_frame_id = base_frame_;
 
-    // TODO:
-    // odom.pose.pose.position.x = pose.x; // set the position
-    // odom.pose.pose.position.y = pose.y;
-    // odom.pose.pose.position.z = 0.0; // 'coz just movement in a x-y-plane
-    // odom.pose.pose.orientation = createQuaternionMsgFromYaw(pose.theta);
-
-    // odom.twist.twist.linear.x = pose.vx; // set the velocities
-    // odom.twist.twist.linear.y = pose.vy;
-    // odom.twist.twist.angular.z = pose.omega;
-
-    // double tvar = 0.02, avar = 0.07;
-    // odom.twist.covariance = {
-    //     tvar, 0, 0, 0,    0, 0, 0, tvar, 0, 0, 0,    0, 0, 0, tvar, 0, 0, 0,
-    //     0,    0, 0, avar, 0, 0, 0, 0,    0, 0, avar, 0, 0, 0, 0,    0, 0,
-    //     avar,
-    // };
-
-    // double tvar = 0.02, avar = 0.07;
-    // odom.twist.covariance = {
-    //     tvar, 0, 0, 0,    0, 0, 0, tvar, 0, 0, 0,    0, 0, 0, tvar, 0, 0, 0,
-    //     0,    0, 0, avar, 0, 0, 0, 0,    0, 0, avar, 0, 0, 0, 0,    0, 0,
-    //     avar,
-    // };
+    odom.twist = twist.twist;
+    odom.pose.pose = tf2::toMsg(pose_);
+    // odom.pose.covariance = covariance_.data();
 
     return odom;
   }
@@ -139,6 +127,7 @@ private:
   // Accumulated position = velocity * dtime
   ros::Time last_time_;
   Eigen::Isometry3d pose_;
+  Covariance6d covariance_;
 
   // ROS Parameters
   std::string odom_frame_{"odom"};

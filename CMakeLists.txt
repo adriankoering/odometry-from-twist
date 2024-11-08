@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   
   tf2_ros
+  tf2_eigen
   tf2_geometry_msgs
   
   geometry_msgs
@@ -30,8 +31,8 @@ find_package(Eigen3 REQUIRED)
 # CATKIN_DEPENDS: catkin_packages dependent projects also need
 # DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES ground_segmentation
+  INCLUDE_DIRS include
+#  LIBRARIES odometry
 #  CATKIN_DEPENDS pcl_ros roscpp tf2_eigen tf2_ros
 #  DEPENDS system_lib
 )
@@ -43,11 +44,19 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
+  include
   ${catkin_INCLUDE_DIRS}
+)
+
+add_library(odometry_from_twist_accumulate src/odometry.cpp)
+target_link_libraries(odometry_from_twist_accumulate
+  ${catkin_LIBRARIES}
+  Eigen3::Eigen
 )
 
 add_executable(odometry_node src/odometry_from_twist.cpp)
 target_link_libraries(odometry_node
+  odometry_from_twist_accumulate
   ${catkin_LIBRARIES}
   Eigen3::Eigen
 )
